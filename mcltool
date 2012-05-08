@@ -257,7 +257,12 @@ mcl_restore() {
     exit 1
   fi
 
-  [ "$1" = "-h" ] && RESTORE_HARDER=1 || RESTORE_HARDER=0
+  if [ "$1" = "-h" ]; then
+    RESTORE_HARDER=1
+    shift
+  else
+    RESTORE_HARDER=0
+  fi
 
   [ -z "$1" ] && MCVER="$(cut -d' ' -f2 $MCDIR/.mcinfo)" || MCVER="$1"
   [ ! -e "$MCVER" ] && MCVER="$BACK_DIR/$MCVER.jar"
