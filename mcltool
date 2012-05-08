@@ -95,12 +95,10 @@ mcl_setup() {
       cp -R "$(readlink $HOME/.minecraft)" $GAME_DIR/$INPUT
       unlink $HOME/.minecraft
     else
-      cp -R $HOME/.minecraft $GAME_DIR/$INPUT
-      rm -r $HOME/.minecraft
+      mv $HOME/.minecraft $GAME_DIR/$INPUT/
     fi
     
-    mv $GAME_DIR/$INPUT/texturepacks/* $TEXTP_DIR/
-    rm -r $GAME_DIR/$INPUT/texturepacks
+    mv $GAME_DIR/$INPUT/texturepacks $TEXTP_DIR/
 
     echo "INFO: Migrated install to '$INPUT'."
   fi
