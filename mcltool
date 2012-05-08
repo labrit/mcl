@@ -4,6 +4,7 @@
 
 GAME_DIR="$HOME/.mclauncher"
 BASE_DIR="$GAME_DIR/nofollow"
+BACK_DIR="$BASE_DIR/backups"
 LWJGL_DIR="$BASE_DIR/lwjgl"
 TEXTP_DIR="$BASE_DIR/texturepacks"
 
@@ -69,7 +70,7 @@ mcl_setup() {
     exit 1
   fi
 
-  mkdir -p $BASE_DIR/backups
+  mkdir -p $BACK_DIR
   mkdir $TEXTP_DIR
   mkdir $GAME_DIR/vanilla
 
@@ -95,10 +96,10 @@ mcl_setup() {
       cp -R "$(readlink $HOME/.minecraft)" $GAME_DIR/$INPUT
       unlink $HOME/.minecraft
     else
-      mv $HOME/.minecraft $GAME_DIR/$INPUT/
+      mv $HOME/.minecraft $GAME_DIR/$INPUT
     fi
     
-    mv $GAME_DIR/$INPUT/texturepacks $TEXTP_DIR/
+    mv $GAME_DIR/$INPUT/texturepacks $TEXTP_DIR
 
     echo "INFO: Migrated install to '$INPUT'."
   fi
@@ -106,7 +107,7 @@ mcl_setup() {
   curl -# $MCLNCH_URL > $GAME_DIR/minecraft.jar
 
   ln -s $GAME_DIR/$INPUT $HOME/.minecraft
-  ln -s $TEXTP_DIR/ $GAME_DIR/$INPUT/texturepacks
+  ln -s $TEXTP_DIR $GAME_DIR/$INPUT/texturepacks
 
   echo "INFO: Setup is complete, enjoy."
 }
@@ -247,7 +248,7 @@ mcl_backup() {
     exit 1
   fi
 
-  cp $MCDIR/bin/minecraft.jar $BASE_DIR/backups/$1.jar
+  cp $MCDIR/bin/minecraft.jar $BACK_DIR/$1.jar
 }
 
 mcl_restore() {
@@ -259,7 +260,7 @@ mcl_restore() {
   [ "$1" = "-h" ] && RESTORE_HARDER=1 || RESTORE_HARDER=0
 
   [ -z "$1" ] && MCVER="$(cut -d' ' -f2 $MCDIR/.mcinfo)" || MCVER="$1"
-  [ ! -e "$MCVER" ] && MCVER="$BASE_DIR/backups/$MCVER.jar"
+  [ ! -e "$MCVER" ] && MCVER="$BACK_DIR/$MCVER.jar"
 
   if [ ! -e "$MCVER" ]; then
     echo "ERROR: No backup found."
