@@ -1,0 +1,423 @@
+#!/bin/bash
+## TODO: Make a better usage()
+## TODO: Possible code cleanup
+
+GAME_DIR="$HOME/.mclauncher"
+BASE_DIR="$GAME_DIR/nofollow"
+LWJGL_DIR="$BASE_DIR/lwjgl"
+TEXTP_DIR="$BASE_DIR/texturepacks"
+
+MCLNCH_URL="http://s3.amazonaws.com/MinecraftDownload/launcher/minecraft.jar"
+LWJGL_URL="http://www.newdawnsoftware.com/jenkins/view/LWJGL/job/LWJGL/lastStableBuild/"
+
+COMMAND="$(echo $1 | tr '[A-Z]' '[a-z]')"
+MCNAME="$2"
+
+shift 2
+
+trap clean_exit SIGINT SIGTERM
+
+# If setup hasn't been completed and the command isn't 'setup' or 'help' error
+if [ ! -d "$BASE_DIR" ] && [ "$COMMAND" != "setup" -a "$COMMAND" != "help" ]; then
+  echo "ERROR: The minecraft launcher hasn't been set-up. Please run this tool with the parameter 'setup' before attempting to continue."
+  exit 1
+fi
+
+clean_exit() {
+  if [ "$COMMAND" = "setup" ]; then
+    rm -rf $GAME_DIR
+  fi
+  exit 1
+}
+
+# getver [mcdir]
+getver() {
+  echo "$(unzip -qqp $1/bin/minecraft.jar net/minecraft/client/Minecraft.class | grep -Eao "Minecraft Minecraft [A-Za-z0-9\.-]+" | cut -c21-)"
+}
+
+# try_makeinfo [mcdir] [mcname]
+try_makeinfo() {
+  [ -e "$1/.mcinfo" ] && return 1
+  [ ! -e "$1/bin/minecraft.jar" ] && return 1
+  MCVER="$(getver $1)"
+  printf "%s) %s : " "$2" "$MCVER" > $1/.mcinfo
+  return 0
+}
+
+mcl_usage() {
+  echo \
+  "Usage: $0 COMMAND [OPTIONS]...
+    Commands:
+      help - Displays this message.
+      setup - Sets up everything needed for first time use.
+      make,new MCNAME [DERIVED] - Creates a new minecraft install with the name 'mcname'. By default it is derived from 'vanilla'.
+      mv,move,rename MCNAME NEWNAME - Renames 'MCNAME' to 'NEWNAME'.
+      rm,remove,delete MCNAME - Removes 'MCNAME'.
+      ls,list [MCNAME] - Prints out a list of all the different versions currently installed.
+      install FILES - Attempts to install all the mods passed as parameters. Mods following a '-m' are installed to the mods folder rather than the jar. You can use the '-M' flag to have a list of mods to be installed to the mods folder. A subsequent '-M' will end the list.
+      link [MCNAME] - If mcname is specified it links the install to ~/.minecraft, otherwise it prints the name of the install currently linked.
+      backup MCNAME VER - Makes a backup of minecraft.jar for 'MCNAME' with the name 'VER'.
+      restore MCNAME [-h] [VER] - Restores the minecraft.jar to the specified version. If no version is specified the current version number is restored. All mods in the mods folder are deleted, but folders and configs remain intact. If you would like everything in the mods folder removed use the '-h' flag.
+      update_lwjgl MCNAME - Attempts to download and install the most recent stable build of lwjgl to MCNAME. If no internet connection is found an attempt will be made to install a local copy if one is present. The local copy is kept in ~/.mclauncher/nofollow/ and should be the only zip in that directory. The general filename structure is lwjgl-VERSION_REVISION.zip
+      deinit MCNAME [-h] - Deinitializes the launcher and places MCNAME in ~/.minecraft. If '-h' isn't specified all the other minecraft installs are moved to ~/mclauncher, otherwise everything else is deleted."
+}
+
+mcl_setup() {
+  # Error if setup seems to have already been called
+  if [ -d "$GAME_DIR" ]; then
+    echo "INFO: Everything is already setup, or ~/.mclauncher is already occupied."
+    exit 1
+  fi
+
+  mkdir -p $BASE_DIR/backups
+  mkdir $TEXTP_DIR
+  mkdir $GAME_DIR/vanilla
+
+  INPUT="vanilla"
+
+  if [ -d "$HOME/.minecraft" ]; then
+    echo "INFO: It appears that ~/.minecraft already exists. This launcher requires at least one vanilla minecraft version(i.e. no mods) be available for everything to function correctly. If this is a vanilla version it can be cleanly migrated for use within this launcher.  Otherwise you will have to create a vanilla version at a later date for full functionality."
+    while [ "$INPUT" != "y" -a "$INPUT" != "n" ]; do
+      printf "Is this a vanilla version? [y/n]: "
+      read -r INPUT
+    done
+
+    if [ "$INPUT" == "n" ]; then
+      echo "INFO: Since this will not be a vanilla install you must specify another name to use. This can be changed at any time by running this launcher tool with the 'rename' parameter. The launcher also won't be able to determine what mods are currently installed. To create a fresh vanilla install later simply run 'minecraft vanilla'."
+      while [ "$INPUT" == "vanilla" ]; do
+        printf "Please enter a name for this install: "
+        read -r INPUT
+        [ "$INPUT" == "vanilla" ] && echo "ERROR: Name cannot be 'vanilla'."
+      done
+    fi
+
+    if [ -h "$HOME/.minecraft" ]; then
+      cp -R "$(readlink $HOME/.minecraft)" $GAME_DIR/$INPUT
+      unlink $HOME/.minecraft
+    else
+      cp -R $HOME/.minecraft $GAME_DIR/$INPUT
+      rm -r $HOME/.minecraft
+    fi
+    
+    mv $GAME_DIR/$INPUT/texturepacks/* $TEXTP_DIR/
+    rm -r $GAME_DIR/$INPUT/texturepacks
+
+    echo "INFO: Migrated install to '$INPUT'."
+  fi
+
+  curl -# $MCLNCH_URL > $GAME_DIR/minecraft.jar
+
+  ln -s $GAME_DIR/$INPUT $HOME/.minecraft
+  ln -s $TEXTP_DIR/ $GAME_DIR/$INPUT/texturepacks
+
+  echo "INFO: Setup is complete, enjoy."
+}
+
+mcl_new() {
+  if [ -z "$MCNAME" ]; then
+    echo "ERROR: No name specified."
+    exit 1
+  fi
+  
+  [ -z "$1" ] && MCDERIVED="vanilla" || MCDERIVED="$1"
+
+  if [ ! -e "$GAME_DIR/$MCDERIVED/.mcinfo" ]; then
+    echo "ERROR: Unable to create '$MCNAME' from '$MCDERIVED'. Either '$MCDERIVED' doesn't exist, or hasn't been set-up properly."
+    exit 1
+  fi
+
+  cp -R $GAME_DIR/$MCDERIVED $GAME_DIR/$MCNAME
+  sed -i "s/.*)/$MCNAME)/" $GAME_DIR/$MCNAME/.mcinfo
+}
+
+mcl_rename() {
+  if [ -z "$MCNAME" -o ! -d "$MCDIR" ]; then
+    echo "ERROR: There is no install with the name '$MCNAME'."
+    exit 1
+  elif [ "$MCNAME" = "vanilla" ]; then
+    echo "ERROR: Please don't rename vanilla."
+    exit 1
+  fi
+
+  mv $GAME_DIR/$MCNAME $GAME_DIR/$1
+  sed -i "s/.*)/$1)/" $GAME_DIR/$1/.mcinfo
+}
+
+mcl_delete() {
+  if [ "$MCNAME" = "vanilla" ]; then
+    echo "ERROR: Please don't delete vanilla."
+    exit 1
+  fi
+
+  [ -n "$MCNAME" -a -d "$MCDIR" ] && rm -r $MCDIR
+}
+
+mcl_list() {
+  if [ -n "$MCNAME" ]; then
+    [ -d "$MCDIR" ] && echo "$(cat $MCDIR/.mcinfo)"
+    exit
+  fi
+  
+  find $GAME_DIR -maxdepth 2 -name ".mcinfo" -type f -print0 | xargs -0 -I{} sh -c "cat {} & echo"
+}
+
+mcl_link() {
+  if [ -z "$MCDIR" ]; then
+    echo "$(basename $(readlink $HOME/.minecraft))"
+    exit
+  fi
+
+  unlink $HOME/.minecraft >/dev/null 2>&1
+  if [ "$?" != "0" ]; then
+    echo "ERROR: Unable to unlink ~/.minecraft"
+    exit 1
+  fi
+
+  ln -s $MCDIR $HOME/.minecraft
+}
+
+mcl_install() {
+  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+    echo "ERROR: There is no install with the name '$MCNAME'."
+    exit 1
+  fi
+
+  if [ "$MCNAME" = "vanilla" ]; then
+    echo "ERROR: Please don't install mods to vanilla."
+    exit 1
+  fi
+
+  MON=0
+
+# Make sure there is a mods directory
+  [ ! -d "$MCDIR/mods" ] && mkdir $MCDIR/mods
+
+# Store the current directory and make a temporary directory for the extracted minecraft
+  LSTDIR="$PWD"
+  TMPDIR=$(mktemp -d --tmpdir="$MCDIR/bin")
+  cd $TMPDIR
+  
+# Extract minecraft and kill META-INF
+  jar xf ../minecraft.jar
+  [ -d "META-INF" ] && rm -r META-INF
+  
+  while [ -n "$1" ]; do
+  # Check if the argument is a flag for a non-jar mod or the start/end of a non-jar mod list
+    if [ "$1" = "-m" -o "$1" = "-M" ]; then
+      if [ "$1" = "-M" ]; then
+        [ "$MON" = "0" ] && MON=1 || MON=0
+      fi
+      MPRE="!" && MOD="$2" && shift
+    else
+    # If the non-jar mod list flag isn't set make sure $MPRE is empty
+      [ "$MON" = "0" -a -n "$MPRE" ] && MPRE=""
+      MOD="$1"
+    fi
+
+    printf "Installing '%s'... " "$MOD"
+
+  # Check if the mod to install is jar or non-jar
+    if [ "$1" = "-m" -o "$MON" = "1" ]; then
+      [ ! -e "$MOD" ] && MOD="$LSTDIR/$MOD"
+      if ! cp "$MOD" $MCDIR/mods >/dev/null 2>&1; then
+        echo "Failed"
+        shift && continue
+      fi
+    else
+      [ ! -e "$MOD" ] && MOD="$LSTDIR/$MOD"
+      if ! unzip -qq -o "$LSTDIR/$1" >/dev/null 2>&1; then
+        echo "Failed"
+        shift && continue
+      fi
+    fi
+
+  # If installation was successful add it to the mcinfo file
+    MOD="${MOD:0:(-4)}"
+    printf "%s" "$MPRE${MOD##*/}" >> $MCDIR/.mcinfo
+    [ -n "$2" ] && printf ', ' >> $MCDIR/.mcinfo
+    echo "Success"
+    shift
+  done
+
+  jar cf ../minecraft.jar .
+  rm -r $TMPDIR
+}
+
+mcl_backup() {
+  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+    echo "ERROR: There is no install with the name '$MCNAME'."
+    exit 1
+  fi
+
+  cp $MCDIR/bin/minecraft.jar $BASE_DIR/backups/$1.jar
+}
+
+mcl_restore() {
+  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+    echo "ERROR: There is no install with the name '$MCNAME'."
+    exit 1
+  fi
+
+  [ "$1" = "-h" ] && RESTORE_HARDER=1 || RESTORE_HARDER=0
+
+  [ -z "$1" ] && MCVER="$(cut -d' ' -f2 $MCDIR/.mcinfo)" || MCVER="$1"
+  [ ! -e "$MCVER" ] && MCVER="$BASE_DIR/backups/$MCVER.jar"
+
+  if [ ! -e "$MCVER" ]; then
+    echo "ERROR: No backup found."
+    exit 1
+  fi
+
+  cp $MCVER $MCDIR/bin/minecraft.jar
+  [ "$RESTORE_HARDER" = "0" ] &&
+    rm $MCDIR/mods/*.zip >/dev/null 2>&1 ||
+    rm -rf $MCDIR/mods/* >/dev/null 2>&1
+  
+  printf "%s) %s : " "$MCNAME" "$(getver $MCDIR)" > $MCDIR/.mcinfo
+}
+
+mcl_update_lwjgl() {
+  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+    echo "ERROR: There is no install with the name '$MCNAME'."
+    exit 1
+  fi
+
+  echo "INFO: Starting LWJGL update for '$MCNAME'..."
+
+  if ping -w5 -c1 google.com >/dev/null 2>&1; then
+    echo "INFO: Checking latest LWJGL version..."
+    LWJGL_RAW="$(curl -s $LWJGL_URL/?)"
+    LWJGL_ZIP="$(echo $LWJGL_RAW | grep -Eo 'lwjgl[^<z]+zip' | sed '1q')"
+    LWJGL_REV="$(echo $LWJGL_RAW | grep -Eo '[0-9]+<b')"
+    LWJGL_LOC="${LWJGL_ZIP:0:(-4)}_${LWJGL_REV:0:(-2)}.zip"
+  else
+    echo "WARNING: No internet connection, trying local copy..."
+  fi
+
+  if [ ! -e "$BASE_DIR/$LWJGL_LOC" ]; then
+    echo "INFO: Update found! Downloading..."
+    rm $BASE_DIR/*zip >/dev/null
+    curl -# $LWJGL_URL/artifact/dist/$LWJGL_ZIP > $BASE_DIR/$LWJGL_LOC
+  else
+    echo "INFO: No update found, using local copy..."
+    LWJGL_LOC="$(ls $BASE_DIR | grep zip)"
+    if [ -z "$LWJGL_LOC" ]; then
+      echo "ERROR: No local copy of LWJGL found"
+      exit 1
+    fi
+  fi
+
+  echo "INFO: Extracting archive..."
+  unzip -qq -d $LWJGL_DIR $BASE_DIR/$LWJGL_LOC
+
+  echo "INFO: Updating files in '$MCNAME'..."
+  JAR_FLIST=( "jinput" "lwjgl" "lwjgl_util" )
+  for jar in "${JAR_FLIST[@]}"; do
+    cp $LWJGL_DIR/*/jar/$jar.jar $MCDIR/bin/
+  done
+  cp $LWJGL_DIR/*/native/linux/*.so $MCDIR/bin/natives/
+
+  echo "INFO: Cleaning up..."
+  rm -r $LWJGL_DIR
+
+  echo "INFO: Update completed successfully!"
+}
+
+mcl_deinit() {
+  echo "WARNING: Deinitialzing will make the launcher unusable."
+  printf "Do you really want to deinitialize mcl? [y/N]: "
+  read -r INPUT
+  INPUT="$(echo $INPUT | tr '[A-Z]' '[a-z]')"
+
+  [ "$INPUT" != "y" ] && exit
+  if [ "$1" = "-h" ]; then
+    DEINIT_HARDER=1
+    shift
+  else
+    DEINIT_HARDER=0
+  fi
+
+  if [ ! -d "$GAME_DIR/$MCNAME" ]; then
+    echo "ERROR: I'm sorry, I'm afraid I can't let you do that $USER." && sleep 5
+    echo "ERROR: '$MCNAME' doesn't exist so deinit will fail gracefully now, no changes have been made."
+    exit 1
+  fi
+
+  unlink $HOME/.minecraft
+
+  find $GAME_DIR -maxdepth 1 -type d \( ! -name "nofollow" \) -print0 | xargs -0 -I{} unlink "{}/texturepacks"
+  rm -f $GAME_DIR/*/.mcinfo >/dev/null 2>&1
+  rm -r $BASE_DIR
+  mv $GAME_DIR/$MCRESTORE $HOME/.minecraft
+  mv $TEXTP_DIR $HOME/.minecraft/
+  mv $GAME_DIR $HOME/mclauncher
+
+  if [ "$DEINIT_HARDER" = "1" ]; then
+    echo "WARNING: You've specified you want to deinit harder. This will completely delete everything except for '$MCNAME' which has been moved to ~/.minecraft."
+    printf "There is no turning back after this, are you sure you wish to continue? [y/N]: "
+    read -r INPUT
+    INPUT="$(echo $INPUT | tr '[A-Z]' '[a-z]')"
+
+    [ "$INPUT" != "y" ] && exit
+    rm -r $HOME/mclauncher
+    echo "INFO: The deed has been done."
+  fi
+}
+
+# If $MCNAME exists then set $MCDIR and attempt to make an info file if it doesn't exist
+[ -n "$MCNAME" -a "$MCNAME" != "nofollow" -a -d "$GAME_DIR/$MCNAME" ] && MCDIR=$GAME_DIR/$MCNAME
+[ -n "$MCDIR" ] && try_makeinfo $MCDIR $MCNAME
+
+case "$COMMAND" in
+  help)
+    mcl_usage
+    ;;
+
+  setup)
+    mcl_setup $@
+    ;;
+
+  make|new)
+    mcl_new $@
+    ;;
+
+  rename|move|mv)
+    mcl_rename $@
+    ;;
+
+  delete|remove|rm)
+    mcl_delete $@
+    ;;
+
+  list|ls)
+    mcl_list $@
+    ;;
+
+  link)
+    mcl_link $@
+    ;;
+
+  install)
+    mcl_install $@
+    ;;
+
+  backup)
+    mcl_backup $@
+    ;;
+
+  restore)
+    mcl_restore $@
+    ;;
+
+  update_lwjgl)
+    mcl_update_lwjgl $@
+    ;;
+
+  deinit)
+    mcl_deinit $@
+    ;;
+
+  *)
+    mcl_usage
+    exit 1
+esac

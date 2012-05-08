@@ -1,0 +1,42 @@
+#!/bin/sh
+
+GAME_DIR="$HOME/.mclauncher"
+BASE_DIR="$GAME_DIR/nofollow"
+BACK_DIR="$BASE_DIR/backups"
+
+# Check that the mclauncher directory exists
+if [ ! -d "$GAME_DIR" ]; then
+  echo "ERROR: mclauncher directory doesn't exist. (Have you ran 'mcltool setup'?)"
+  exit 1
+fi
+
+# If another minecraft install was specified attempt to use it
+if [ -n "$1" ]; then
+  [ "$1" != "nofollow" -a -d "$GAME_DIR/$1" ] && MCDIR="$GAME_DIR/$1"
+  if [ -n "$MCDIR" ]; then
+    if [ -e "$HOME/.minecraft" -o -h "$HOME/.minecraft" ]; then
+      unlink $HOME/.minecraft >/dev/null 2>&1
+      if [ "$?" != "0" ]; then
+        echo "ERROR: Unable to unlink ~/.minecraft"
+        exit 1
+      fi
+    fi
+    ln -s $MCDIR $HOME/.minecraft
+  else
+    echo "ERROR: '$1' does not exist"
+    exit 1
+  fi
+fi
+
+MCNAME="$(readlink $HOME/.minecraft)"
+MCNAME="${MCNAME##*/}"
+
+# Check the vanilla minecraft version and make a backup if needed
+if [ "$MCNAME" = "vanilla" ]; then
+  MCVER="$(unzip -qqp $HOME/.minecraft/bin/minecraft.jar net/minecraft/client/Minecraft.class | grep -Eao "Minecraft Minecraft [A-Za-z0-9\.-]+" | cut -c21-)"
+  [ ! -e "$BACK_DIR/$MCVER.jar" ] && cp "$HOME/.minecraft/bin/minecraft.jar" "$BACK_DIR/$MCVER.jar"
+fi
+
+# Have java take over the process from here
+echo "Starting '$MCNAME'..."
+exec java -jar $GAME_DIR/minecraft.jar
