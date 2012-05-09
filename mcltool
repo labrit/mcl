@@ -11,11 +11,7 @@ TEXTP_DIR="$BASE_DIR/texturepacks"
 MCLNCH_URL="http://s3.amazonaws.com/MinecraftDownload/launcher/minecraft.jar"
 LWJGL_URL="http://www.newdawnsoftware.com/jenkins/view/LWJGL/job/LWJGL/lastStableBuild/"
 
-tolower() {
-  echo "$@" | tr '[A-Z]' '[a-z]'
-}
-
-COMMAND="$(tolower $1)"
+COMMAND="$(echo $1 | tr '[A-Z]' '[a-z]')"
 MCNAME="$2"
 
 shift 2
@@ -33,6 +29,10 @@ clean_exit() {
     rm -rf $GAME_DIR
   fi
   exit 1
+}
+
+tolower() {
+  echo "$@" | tr '[A-Z]' '[a-z]'
 }
 
 # getver [mcdir]
@@ -113,6 +113,8 @@ mcl_setup() {
   ln -s $GAME_DIR/$INPUT $HOME/.minecraft
   ln -s $TEXTP_DIR $GAME_DIR/$INPUT/texturepacks
 
+  try_makeinfo $GAME_DIR/$INPUT $INPUT
+
   echo "INFO: Setup is complete, enjoy."
 }
 
@@ -192,7 +194,7 @@ mcl_install() {
 
   MON=0
 
-  sed -i "s/\n//" $MCDIR/.mcinfo
+  cat $MCDIR/.mcinfo | tr -d '\n' > $MCDIR/.mcinfo
 
   # Make sure there is a mods directory
   [ ! -d "$MCDIR/mods" ] && mkdir $MCDIR/mods
@@ -205,32 +207,39 @@ mcl_install() {
   # Extract minecraft and kill META-INF
   jar xf ../minecraft.jar
   [ -d "META-INF" ] && rm -r META-INF
-  
+
+  # See if there are mods already installed
+  MCINFO="$(cat $MCDIR/.mcinfo)"
+  [ "$(${MCINFO##* } | wc -c)" != "1" ] && printf ", " >> $MCDIR/.mcinfo
+
   while [ -n "$1" ]; do
     # Check if the argument is a flag for a non-jar mod or the start/end of a non-jar mod list
     if [ "$1" = "-m" -o "$1" = "-M" ]; then
       if [ "$1" = "-M" ]; then
-        [ "$MON" = "0" ] && MON=1 || MON=0
+        if [ "$MON" = "0" ]; then MON=1
+        else MON=0 && shift && continue
+        fi
       fi
-      MPRE="!" && MOD="$2" && shift
+      MPRE="!" && shift
     else
       # If the non-jar mod list flag isn't set make sure $MPRE is empty
       [ "$MON" = "0" -a -n "$MPRE" ] && MPRE=""
-      MOD="$1"
     fi
+
+    MOD="$1"
 
     printf "Installing '%s'... " "$MOD"
 
+    [ ! -e "$MOD" ] && MOD="$LSTDIR/$MOD"
+
     # Check if the mod to install is jar or non-jar
     if [ "$1" = "-m" -o "$MON" = "1" ]; then
-      [ ! -e "$MOD" ] && MOD="$LSTDIR/$MOD"
       if ! cp "$MOD" $MCDIR/mods >/dev/null 2>&1; then
         echo "Failed"
         shift && continue
       fi
     else
-      [ ! -e "$MOD" ] && MOD="$LSTDIR/$MOD"
-      if ! unzip -qq -o "$LSTDIR/$1" >/dev/null 2>&1; then
+      if ! unzip -qq -o "$MOD" >/dev/null 2>&1; then
         echo "Failed"
         shift && continue
       fi
@@ -239,11 +248,12 @@ mcl_install() {
     # If installation was successful add it to the mcinfo file
     MOD="${MOD:0:(-4)}"
     printf "%s" "$MPRE${MOD##*/}" >> $MCDIR/.mcinfo
-    [ -n "$2" ] && MSUF=", " || MSUF="\n"
-    printf '%s' "$MSUF" >> $MCDIR/.mcinfo
+    [ -n "$2" ] && printf ", " >> $MCDIR/.mcinfo
     echo "Success"
     shift
   done
+
+  echo >> $MCDIR/.mcinfo
 
   jar cf ../minecraft.jar .
   rm -r $TMPDIR

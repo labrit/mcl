@@ -31,7 +31,7 @@ fi
 MCNAME="$(basename $(readlink $HOME/.minecraft))"
 
 # Check the vanilla minecraft version and make a backup if needed
-if [ "$MCNAME" = "vanilla" ]; then
+if [ -e "$HOME/.minecraft/bin/minecraft.jar" -a "$MCNAME" = "vanilla" ]; then
   MCVER="$(unzip -qqp $HOME/.minecraft/bin/minecraft.jar net/minecraft/client/Minecraft.class | grep -Eao "Minecraft Minecraft [A-Za-z0-9\.-]+" | cut -c21-)"
   [ ! -e "$BACK_DIR/$MCVER.jar" ] && cp "$HOME/.minecraft/bin/minecraft.jar" "$BACK_DIR/$MCVER.jar"
 fi
