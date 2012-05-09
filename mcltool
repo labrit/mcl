@@ -11,7 +11,11 @@ TEXTP_DIR="$BASE_DIR/texturepacks"
 MCLNCH_URL="http://s3.amazonaws.com/MinecraftDownload/launcher/minecraft.jar"
 LWJGL_URL="http://www.newdawnsoftware.com/jenkins/view/LWJGL/job/LWJGL/lastStableBuild/"
 
-COMMAND="$(echo $1 | tr '[A-Z]' '[a-z]')"
+tolower() {
+  echo "$@" | tr '[A-Z]' '[a-z]'
+}
+
+COMMAND="$(tolower $1)"
 MCNAME="$2"
 
 shift 2
@@ -29,10 +33,6 @@ clean_exit() {
     rm -rf $GAME_DIR
   fi
   exit 1
-}
-
-tolower() {
-  echo "$@" | tr '[A-Z]' '[a-z]'
 }
 
 # getver [mcdir]
@@ -210,7 +210,7 @@ mcl_install() {
 
   # See if there are mods already installed
   MCINFO="$(cat $MCDIR/.mcinfo)"
-  [ "$(${MCINFO##* } | wc -c)" != "1" ] && printf ", " >> $MCDIR/.mcinfo
+  [ "$(echo ${MCINFO##* } | wc -c)" != "1" ] && printf ", " >> $MCDIR/.mcinfo
 
   while [ -n "$1" ]; do
     # Check if the argument is a flag for a non-jar mod or the start/end of a non-jar mod list
