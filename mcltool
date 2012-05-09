@@ -31,6 +31,10 @@ clean_exit() {
   exit 1
 }
 
+tolower() {
+  echo "$@" | tr '[A-Z]' '[a-z]'
+}
+
 # getver [mcdir]
 getver() {
   echo "$(unzip -qqp $1/bin/minecraft.jar net/minecraft/client/Minecraft.class | grep -Eao "Minecraft Minecraft [A-Za-z0-9\.-]+" | cut -c21-)"
@@ -40,8 +44,7 @@ getver() {
 try_makeinfo() {
   [ -e "$1/.mcinfo" ] && return 1
   [ ! -e "$1/bin/minecraft.jar" ] && return 1
-  MCVER="$(getver $1)"
-  printf "%s) %s : " "$2" "$MCVER" > $1/.mcinfo
+  echo "$2) $(getver $1) : " > $1/.mcinfo
   return 0
 }
 
@@ -81,6 +84,7 @@ mcl_setup() {
     while [ "$INPUT" != "y" -a "$INPUT" != "n" ]; do
       printf "Is this a vanilla version? [y/n]: "
       read -r INPUT
+      INPUT="$(tolower $INPUT)"
     done
 
     if [ "$INPUT" == "n" ]; then
@@ -130,7 +134,7 @@ mcl_new() {
 }
 
 mcl_rename() {
-  if [ -z "$MCNAME" -o ! -d "$MCDIR" ]; then
+  if [ -z "$MCDIR" ]; then
     echo "ERROR: There is no install with the name '$MCNAME'."
     exit 1
   elif [ "$MCNAME" = "vanilla" ]; then
@@ -148,16 +152,16 @@ mcl_delete() {
     exit 1
   fi
 
-  [ -n "$MCNAME" -a -d "$MCDIR" ] && rm -r $MCDIR
+  [ -n "$MCDIR" ] && rm -r $MCDIR
 }
 
 mcl_list() {
   if [ -n "$MCNAME" ]; then
-    [ -d "$MCDIR" ] && echo "$(cat $MCDIR/.mcinfo)"
+    [ -n "$MCDIR" ] && cat $MCDIR/.mcinfo
     exit
   fi
   
-  find $GAME_DIR -maxdepth 2 -name ".mcinfo" -type f -print0 | xargs -0 -I{} sh -c "cat {} & echo"
+  cat $GAME_DIR/*/.mcinfo
 }
 
 mcl_link() {
@@ -176,7 +180,7 @@ mcl_link() {
 }
 
 mcl_install() {
-  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+  if [ -z "$MCDIR" ]; then
     echo "ERROR: There is no install with the name '$MCNAME'."
     exit 1
   fi
@@ -187,6 +191,8 @@ mcl_install() {
   fi
 
   MON=0
+
+  sed -i "s/\n//" $MCDIR/.mcinfo
 
 # Make sure there is a mods directory
   [ ! -d "$MCDIR/mods" ] && mkdir $MCDIR/mods
@@ -233,7 +239,8 @@ mcl_install() {
   # If installation was successful add it to the mcinfo file
     MOD="${MOD:0:(-4)}"
     printf "%s" "$MPRE${MOD##*/}" >> $MCDIR/.mcinfo
-    [ -n "$2" ] && printf ', ' >> $MCDIR/.mcinfo
+    [ -n "$2" ] && MSUF=", " || MSUF="\n"
+    printf '%s' "$MSUF" >> $MCDIR/.mcinfo
     echo "Success"
     shift
   done
@@ -243,7 +250,7 @@ mcl_install() {
 }
 
 mcl_backup() {
-  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+  if [ -z "$MCDIR" ]; then
     echo "ERROR: There is no install with the name '$MCNAME'."
     exit 1
   fi
@@ -252,7 +259,7 @@ mcl_backup() {
 }
 
 mcl_restore() {
-  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+  if [ -z "$MCDIR" ]; then
     echo "ERROR: There is no install with the name '$MCNAME'."
     exit 1
   fi
@@ -277,11 +284,11 @@ mcl_restore() {
     rm $MCDIR/mods/*.zip >/dev/null 2>&1 ||
     rm -rf $MCDIR/mods/* >/dev/null 2>&1
   
-  printf "%s) %s : " "$MCNAME" "$(getver $MCDIR)" > $MCDIR/.mcinfo
+  echo "$MCNAME) $(getver $MCDIR) : " > $MCDIR/.mcinfo
 }
 
 mcl_update_lwjgl() {
-  if [ -z "$MCDIR" -o ! -d "$MCDIR" ]; then
+  if [ -z "$MCDIR" ]; then
     echo "ERROR: There is no install with the name '$MCNAME'."
     exit 1
   fi
@@ -331,7 +338,7 @@ mcl_deinit() {
   echo "WARNING: Deinitialzing will make the launcher unusable."
   printf "Do you really want to deinitialize mcl? [y/N]: "
   read -r INPUT
-  INPUT="$(echo $INPUT | tr '[A-Z]' '[a-z]')"
+  INPUT="$(tolower $INPUT)"
 
   [ "$INPUT" != "y" ] && exit
   if [ "$1" = "-h" ]; then
@@ -360,7 +367,7 @@ mcl_deinit() {
     echo "WARNING: You've specified you want to deinit harder. This will completely delete everything except for '$MCNAME' which has been moved to ~/.minecraft."
     printf "There is no turning back after this, are you sure you wish to continue? [y/N]: "
     read -r INPUT
-    INPUT="$(echo $INPUT | tr '[A-Z]' '[a-z]')"
+    INPUT="$(tolower $INPUT)"
 
     [ "$INPUT" != "y" ] && exit
     rm -r $HOME/mclauncher

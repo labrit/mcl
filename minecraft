@@ -28,8 +28,7 @@ if [ -n "$1" ]; then
   fi
 fi
 
-MCNAME="$(readlink $HOME/.minecraft)"
-MCNAME="${MCNAME##*/}"
+MCNAME="$(basename $(readlink $HOME/.minecraft))"
 
 # Check the vanilla minecraft version and make a backup if needed
 if [ "$MCNAME" = "vanilla" ]; then
