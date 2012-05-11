@@ -89,6 +89,7 @@ mcl_setup() {
 
     if [ "$INPUT" == "n" ]; then
       echo "INFO: Since this will not be a vanilla install you must specify another name to use. This can be changed at any time by running this launcher tool with the 'rename' parameter. The launcher also won't be able to determine what mods are currently installed. To create a fresh vanilla install later simply run 'minecraft vanilla'."
+      INPUT="vanilla"
       while [ "$INPUT" == "vanilla" ]; do
         printf "Please enter a name for this install: "
         read -r INPUT
